@@ -2,7 +2,7 @@
 # Uso, desde la raíz del repositorio:
 #   docker compose up --build      levanta los 4 contenedores
 #   docker compose down -v         los elimina junto con los volúmenes de datos
-name: quinta-entrega
+name: festivos-calendario
 
 services:
 
@@ -12,10 +12,16 @@ services:
     build: ./api-festivos/bd
     image: dockerbdfestivos
     container_name: dockerbdfestivos
+    # Puerto para revisar la BD desde el equipo (por ejemplo con MongoDB Compass).
+    # Se usa 27018 y no 27017 para no chocar con un MongoDB instalado en el equipo.
+    # La API se conecta por la red de Docker al puerto interno 27017
+    ports:
+      - "27018:27017"
     volumes:
       - datos-festivos:/data/db
     networks:
       - red-calendario
+    restart: on-failure
     healthcheck:
       # Sana cuando el servidor definitivo responde por la red del contenedor (no el
       # temporal que usa la imagen para cargar el script, que solo escucha en 127.0.0.1)
@@ -31,6 +37,9 @@ services:
     build: ./api-festivos
     image: dockerapifestivos
     container_name: dockerapifestivos
+    # Node.js no atiende la señal de apagado cuando es el proceso principal del contenedor:
+    # sin init, docker compose stop/down espera 10 s y lo termina a la fuerza (código 137)
+    init: true
     environment:
       PUERTO: 3030
       BD_SERVIDOR: dockerbdfestivos   # nombre del contenedor de MongoDB en la red, no localhost
@@ -63,10 +72,16 @@ services:
       POSTGRES_PASSWORD: sa
       # No se define POSTGRES_DB: el DDL crea la base de datos calendario y, si ya
       # existiera, el CREATE DATABASE fallaría y se detendría la carga de los scripts
+    # Puerto para revisar la BD desde el equipo (por ejemplo con pgAdmin).
+    # Se usa 5433 y no 5432 para no chocar con un PostgreSQL instalado en el equipo.
+    # La API se conecta por la red de Docker al puerto interno 5432
+    ports:
+      - "5433:5432"
     volumes:
       - datos-calendario:/var/lib/postgresql/data
     networks:
       - red-calendario
+    restart: on-failure
     healthcheck:
       # Con -h localhost se pregunta por TCP: mientras la imagen corre los scripts, el
       # servidor temporal no escucha por TCP, así que solo queda sano al terminar la carga
@@ -95,16 +110,28 @@ services:
     networks:
       - red-calendario
     depends_on:
+      # Sin su base de datos la API no puede funcionar: espera a que esté sana
       bdcalendario:
         condition: service_healthy
+      # La API Festivos solo se necesita para generar el calendario. Si no responde,
+      # generar devuelve false, pero listar y el CRUD de tipos siguen funcionando.
+      # Por eso solo se espera a que arranque, sin exigir que esté sana
       apifestivos:
-        condition: service_healthy
+        condition: service_started
     restart: on-failure
+    healthcheck:
+      # La imagen alpine trae wget. Sana cuando la API responde consultando la BD
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:8080/api/tipos/listar || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
 
 # Red común: dentro de ella cada contenedor encuentra a los demás por su nombre
 networks:
   red-calendario:
     name: red-calendario
+    driver: bridge
 
 # Volúmenes con los datos de las bases de datos (se borran con docker compose down -v)
 volumes:

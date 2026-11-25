@@ -13,7 +13,9 @@ const app = express();
 //Cargar librería para 'parseo' de contenido JSON
 app.use(express.json());
 
-//Documentacion de la API con Swagger UI
+//Documentacion de la API con Swagger UI. La URL del servidor no se deja fija en
+//localhost:3030: en Docker el puerto publicado puede ser otro y "Try it out" fallaría
+documentacion.servers = [{ url: configApp.URL_PUBLICA }];
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(documentacion));
 
 //Dejar disponibles las rutas a los métodos web

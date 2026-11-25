@@ -1,4 +1,4 @@
-# Quinta entrega - Contenerización con Docker
+# Entrega final - Orquestación con Docker Compose
 
 Arquitectura de Software 2 - Instituto Tecnológico Metropolitano
 
@@ -28,12 +28,14 @@ ningún otro repositorio:
 | [api-festivos/](api-festivos/) | Código de la API Festivos ([README](api-festivos/README.md)), su [Dockerfile](api-festivos/Dockerfile) y, en [bd/](api-festivos/bd/), el script de datos y el Dockerfile de MongoDB |
 | [api-calendario/](api-calendario/) | Código de la API Calendario ([README](api-calendario/README.md)), su [Dockerfile](api-calendario/Dockerfile) y, en [bd/](api-calendario/bd/), los scripts SQL y el Dockerfile de PostgreSQL |
 | [docker-compose.yml](docker-compose.yml) | Orquestación de los 4 contenedores, la red y los volúmenes |
+| [EVIDENCIAS.md](EVIDENCIAS.md) | Evidencia de la ejecución: construcción, estado de los contenedores, pruebas de cada servicio y de la integración, con capturas en [evidencias/](evidencias/) |
 
 ## Diagrama de despliegue
 
 ```mermaid
 flowchart LR
     consumidor["Consumidor<br/>(navegador, curl o Postman)"]
+    clientebd["Cliente de BD<br/>(MongoDB Compass o pgAdmin)"]
 
     subgraph host["Equipo anfitrión con Docker"]
         subgraph red["Red Docker: red-calendario"]
@@ -49,6 +51,8 @@ flowchart LR
 
     consumidor -- "HTTP :8080" --> apicalendario
     consumidor -- "HTTP :3030" --> apifestivos
+    clientebd -. ":5433" .-> bdcalendario
+    clientebd -. ":27018" .-> bdfestivos
     apicalendario -- "GET /api/festivos/obtener/{anio}<br/>http://dockerapifestivos:3030" --> apifestivos
     apicalendario -- "JDBC<br/>dockerbdcalendario:5432" --> bdcalendario
     apifestivos -- "MongoDB<br/>dockerbdfestivos:27017" --> bdfestivos
@@ -60,12 +64,15 @@ flowchart LR
     classDef externo fill:#999999,stroke:#6b6b6b,color:#ffffff
     class apicalendario,apifestivos contenedor
     class bdcalendario,bdfestivos basedatos
-    class consumidor externo
+    class consumidor,clientebd externo
 ```
 
-Solo las dos APIs publican un puerto en el equipo anfitrión (`3030` y `8080`). Las bases de
-datos quedan accesibles únicamente dentro de la red `red-calendario`: así no chocan con un
-MongoDB o un PostgreSQL instalados en el equipo, y nadie de fuera de la red llega a ellas.
+Las APIs publican en el equipo anfitrión los puertos `3030` y `8080`. Las bases de datos se
+publican en `27018` (MongoDB) y `5433` (PostgreSQL), como en el ejemplo de clase, para poder
+revisarlas desde el equipo con MongoDB Compass o pgAdmin. Se usan esos puertos y no los
+estándar (`27017` y `5432`) para no chocar con un MongoDB o un PostgreSQL instalados en el
+equipo. Dentro de la red `red-calendario`, las APIs se conectan a las bases de datos por los
+puertos internos de siempre.
 
 ## Requisitos
 
@@ -74,8 +81,9 @@ MongoDB o un PostgreSQL instalados en el equipo, y nadie de fuera de la red lleg
 | Docker Desktop (Windows y macOS) o Docker Engine con el plugin Compose (Linux) | `docker compose version` |
 
 No hace falta tener instalado Node.js, Java, Maven, MongoDB ni PostgreSQL: todo se descarga
-y se compila dentro de las imágenes. Los puertos `3030` y `8080` del equipo deben estar
-libres (por ejemplo, sin las APIs de la tercera y cuarta entrega corriendo en local).
+y se compila dentro de las imágenes. Los puertos `3030`, `8080`, `27018` y `5433` del equipo
+deben estar libres (por ejemplo, sin las APIs de la tercera y cuarta entrega corriendo en
+local).
 
 ## Ejecución
 
@@ -86,16 +94,18 @@ docker compose up --build
 ```
 
 La primera vez tarda unos minutos, porque descarga las imágenes base y compila la API
-Calendario con Maven. Docker levanta los contenedores en este orden, y cada uno espera a que
-el anterior esté sano (`healthcheck`) antes de arrancar:
+Calendario con Maven. Docker levanta los contenedores en este orden (`depends_on`):
 
 1. `dockerbdfestivos` y `dockerbdcalendario`. Con el volumen vacío cargan sus scripts de datos.
-2. `dockerapifestivos`, cuando MongoDB ya tiene los datos de los festivos.
-3. `dockerapicalendario`, cuando PostgreSQL tiene las tablas y la API Festivos ya responde.
+2. `dockerapifestivos`, cuando MongoDB está sano (`healthcheck`): ya tiene los datos de los
+   festivos.
+3. `dockerapicalendario`, cuando PostgreSQL está sano (ya tiene las tablas) y la API Festivos
+   arrancó. No espera a que la API Festivos esté sana: solo la necesita para generar el
+   calendario (ver [Decisiones](#decisiones-para-revisar)).
 
-El sistema está listo cuando el log muestra `Started ApiApplication`. Para dejarlo corriendo
-en segundo plano se usa `docker compose up --build -d`, y `docker compose ps` muestra el
-estado de cada contenedor.
+Los cuatro contenedores tienen `healthcheck`. El sistema está listo cuando
+`docker compose ps` los muestra todos como `(healthy)`. Para dejarlo corriendo en segundo
+plano se usa `docker compose up --build -d`.
 
 ### Comprobar
 
@@ -114,6 +124,16 @@ La documentación interactiva de las dos APIs queda en Swagger UI:
 |---|---|
 | API Festivos | `http://localhost:3030/api-docs` |
 | API Calendario | `http://localhost:8080/swagger-ui.html` |
+
+Las bases de datos se pueden revisar desde el equipo:
+
+| Base de datos | Conexión |
+|---|---|
+| MongoDB (`festivos`) | MongoDB Compass con `mongodb://localhost:27018` |
+| PostgreSQL (`calendario`) | pgAdmin: servidor `localhost`, puerto `5433`, usuario `postgres`, clave `sa` |
+
+Las pruebas hechas con todo el sistema corriendo, con sus resultados y capturas, están en
+[EVIDENCIAS.md](EVIDENCIAS.md).
 
 Las demás operaciones y sus ejemplos están en el README de cada API:
 [API Festivos](api-festivos/README.md#operaciones) y
@@ -141,9 +161,9 @@ cuando el directorio de datos está vacío).
 
 | Contenedor | Imagen | Construida desde | Puerto en el anfitrión |
 |---|---|---|---|
-| `dockerbdfestivos` | `dockerbdfestivos` (base `mongo:8.0`) | [api-festivos/bd/Dockerfile](api-festivos/bd/Dockerfile) | ninguno |
+| `dockerbdfestivos` | `dockerbdfestivos` (base `mongo:8.0`) | [api-festivos/bd/Dockerfile](api-festivos/bd/Dockerfile) | `27018` |
 | `dockerapifestivos` | `dockerapifestivos` (base `node:22-alpine`) | [api-festivos/Dockerfile](api-festivos/Dockerfile) | `3030` |
-| `dockerbdcalendario` | `dockerbdcalendario` (base `postgres:16`) | [api-calendario/bd/Dockerfile](api-calendario/bd/Dockerfile) | ninguno |
+| `dockerbdcalendario` | `dockerbdcalendario` (base `postgres:16`) | [api-calendario/bd/Dockerfile](api-calendario/bd/Dockerfile) | `5433` |
 | `dockerapicalendario` | `dockerapicalendario` (base `eclipse-temurin:17-jre-alpine`) | [api-calendario/Dockerfile](api-calendario/Dockerfile) | `8080` |
 
 Los nombres siguen la convención del ejemplo de clase (`dockerbdmonedas`, `dockerapimonedas`):
@@ -187,9 +207,11 @@ sobreviven a `docker compose down` y a reiniciar los contenedores.
 
 ## Configuración
 
-Las APIs no cambiaron: siguen leyendo su configuración de variables de entorno, con valores
-por defecto para correr en local (`localhost`). En Docker, el `docker-compose.yml` le da a
-cada variable el nombre del contenedor correspondiente.
+Las APIs leen su configuración de variables de entorno, con valores por defecto para correr
+en local (`localhost`). En Docker, el `docker-compose.yml` le da a cada variable el nombre del
+contenedor correspondiente. El único cambio frente al código de la tercera y cuarta entrega es
+que el Swagger de la API Festivos ya no tiene fija la URL `http://localhost:3030` (variable
+`URL_PUBLICA`, ver [Decisiones](#decisiones-para-revisar)).
 
 ### API Festivos
 
@@ -200,6 +222,7 @@ cada variable el nombre del contenedor correspondiente.
 | `BD_PUERTO` | `27017` | `27017` |
 | `BD_BASEDATOS` | `festivos` | `festivos` |
 | `BD_USUARIO` / `BD_CLAVE` | vacíos (sin autenticación) | vacíos (sin autenticación) |
+| `URL_PUBLICA` | `/` (la dirección desde la que se abre Swagger UI) | sin definir (`/`) |
 
 ### API Calendario
 
@@ -232,14 +255,15 @@ la raíz del repositorio:
 docker network create red-calendario
 
 docker build -t dockerbdfestivos api-festivos/bd
-docker run -d --name dockerbdfestivos --network red-calendario dockerbdfestivos
+docker run -d --name dockerbdfestivos --network red-calendario -p 27018:27017 \
+  dockerbdfestivos
 
 docker build -t dockerapifestivos api-festivos
-docker run -d --name dockerapifestivos --network red-calendario -p 3030:3030 \
+docker run -d --name dockerapifestivos --network red-calendario -p 3030:3030 --init \
   -e BD_SERVIDOR=dockerbdfestivos dockerapifestivos
 
 docker build -t dockerbdcalendario api-calendario/bd
-docker run -d --name dockerbdcalendario --network red-calendario \
+docker run -d --name dockerbdcalendario --network red-calendario -p 5433:5432 \
   -e POSTGRES_PASSWORD=sa dockerbdcalendario
 
 docker build -t dockerapicalendario api-calendario
@@ -281,6 +305,30 @@ Puntos que el enunciado no fija y en los que se tomó la opción más simple:
 - **Pruebas unitarias fuera de la imagen.** La imagen compila con `-DskipTests` para no
   alargar la construcción. Las pruebas se corren con `./mvnw package` en `api-calendario` y
   con `npm test` en `api-festivos`.
-- **Puertos de las bases de datos sin publicar.** Para conectarse a ellas desde el equipo se
-  puede usar `docker exec -it dockerbdfestivos mongosh festivos` o
+- **Puertos de las bases de datos.** Se publican en `27018` (MongoDB) y `5433` (PostgreSQL),
+  como en el `docker-compose.yml` de clase, para revisarlas desde el equipo con MongoDB
+  Compass o pgAdmin. No se usan `27017` ni `5432` para no chocar con un MongoDB o un
+  PostgreSQL instalados en el equipo. También se puede entrar sin puerto publicado:
+  `docker exec -it dockerbdfestivos mongosh festivos` o
   `docker exec -it dockerbdcalendario psql -U postgres -d calendario`.
+- **La API Calendario no exige que la API Festivos esté sana para arrancar.** Depende de su
+  base de datos con `condition: service_healthy`, porque sin ella no funciona nada. De la API
+  Festivos solo espera a que arranque (`service_started`): la necesita únicamente para
+  generar el calendario. Si la API Festivos se cae, generar responde `false`, pero listar el
+  calendario y el CRUD de tipos siguen funcionando. Es la misma decisión que se tomó en clase
+  al comentar la dependencia de la API Monedas hacia la API División Política.
+- **Swagger de la API Festivos sin URL fija.** El `openapi.json` tenía como servidor
+  `http://localhost:3030`, así que "Try it out" solo funcionaba si el contenedor se publicaba
+  en ese mismo puerto (en clase falló al publicarlo en el `3040`). Ahora el servidor es `/`:
+  Swagger UI llama a la misma dirección y puerto desde los que se abrió la página. Si hiciera
+  falta una URL distinta (por ejemplo, detrás de un proxy), se indica con la variable
+  `URL_PUBLICA`. La API Calendario no tenía el problema: springdoc arma la URL con la de cada
+  petición.
+- **Reinicio y apagado.** Los cuatro servicios tienen `restart: on-failure`: si el proceso
+  termina con error, Docker vuelve a levantar el contenedor. La API Festivos usa además
+  `init: true`, porque Node.js, como proceso principal del contenedor, no atiende la señal de
+  apagado: sin `init`, `docker compose stop` o `down` esperan 10 segundos y la terminan a la
+  fuerza (código 137).
+- **`healthcheck` en los cuatro servicios.** Cada base de datos queda sana cuando ya cargó
+  sus scripts, y cada API cuando responde consultando su base de datos. Así
+  `docker compose ps` muestra de un vistazo si todo el sistema funciona.

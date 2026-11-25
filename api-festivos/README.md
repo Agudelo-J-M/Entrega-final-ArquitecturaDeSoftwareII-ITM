@@ -44,6 +44,12 @@ sobrescribir con variables de entorno:
 | `BD_PUERTO` | `27017` |
 | `BD_BASEDATOS` | `festivos` |
 | `BD_USUARIO` / `BD_CLAVE` | vacíos (sin autenticación) |
+| `URL_PUBLICA` | `/` (la misma dirección desde la que se abre Swagger UI) |
+
+`URL_PUBLICA` es el servidor al que Swagger UI envía las pruebas de "Try it out". No se deja
+fijo en `http://localhost:3030`, porque en Docker el puerto publicado en el equipo puede ser
+otro y las pruebas fallarían. Con el valor por defecto, Swagger UI llama a la misma dirección
+y puerto desde los que se abrió la página.
 
 ## Estructura del proyecto
 
