@@ -6,7 +6,8 @@ documento son de una ejecución real del [docker-compose.yml](docker-compose.yml
 repositorio.
 
 **Entorno:** Windows 11 Pro, Docker Desktop con Docker Engine 28.5.1 y Docker Compose
-v2.40.2. Las pruebas se hicieron con `curl` y con Swagger UI.
+v2.40.2. Las pruebas se hicieron con `curl` y con Swagger UI, y las capturas son de la
+consola, de Docker Desktop y del navegador.
 
 **Contenido:**
 
@@ -56,6 +57,22 @@ dockerbdcalendario    dockerbdcalendario    Up 22 seconds (healthy)   0.0.0.0:54
 dockerbdfestivos      dockerbdfestivos      Up 22 seconds (healthy)   0.0.0.0:27018->27017/tcp
 ```
 
+La misma ejecución en la consola, con `--wait` para que el comando termine cuando todos los
+contenedores están sanos. Compose construye las 4 imágenes, crea la red y los volúmenes, y
+levanta los 4 contenedores hasta que quedan `Healthy`:
+
+![docker compose up --build en la consola](evidencias/08-terminal-docker-compose-up.png)
+
+En Docker Desktop, el proyecto `festivos-calendario` agrupa los 4 servicios con sus
+contenedores y los puertos publicados (`27018`, `5433`, `3030` y `8080`):
+
+![Proyecto festivos-calendario en Docker Desktop](evidencias/09-docker-desktop-proyecto.png)
+
+El log del contenedor `dockerapicalendario` muestra que la API Calendario se conectó a
+PostgreSQL 16 por la red de Docker y arrancó en el puerto 8080 (`Started ApiApplication`):
+
+![Log de arranque de la API Calendario en Docker Desktop](evidencias/10-docker-desktop-log-apicalendario.png)
+
 ## 2. Red, volúmenes e imágenes
 
 Los cuatro contenedores están en la red `red-calendario`, donde cada uno encuentra a los
@@ -79,6 +96,8 @@ local     festivos-calendario_datos-calendario
 local     festivos-calendario_datos-festivos
 ```
 
+![Volúmenes del proyecto en Docker Desktop](evidencias/12-docker-desktop-volumenes.png)
+
 Imágenes construidas por Compose a partir de los Dockerfiles del repositorio:
 
 ```text
@@ -89,6 +108,12 @@ dockerapifestivos     latest    286MB
 dockerbdcalendario    latest    636MB
 dockerbdfestivos      latest    1.29GB
 ```
+
+En Docker Desktop aparecen las 4 imágenes en uso (`dockerbdcalendario`, `dockerapicalendario`,
+`dockerapifestivos` y `dockerbdfestivos`). Las 3 imágenes `docker/desktop-...` de la lista son
+internas de Docker Desktop y no hacen parte del proyecto:
+
+![Imágenes del proyecto en Docker Desktop](evidencias/11-docker-desktop-imagenes.png)
 
 ## 3. Bases de datos
 
