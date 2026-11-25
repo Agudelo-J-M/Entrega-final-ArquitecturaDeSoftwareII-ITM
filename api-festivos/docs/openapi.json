@@ -5,7 +5,6 @@
     "version": "1.0.0",
     "description": "API RESTful en Express JS sobre MongoDB que administra los datos para calcular los festivos de Colombia, verifica si una fecha es festiva y lista los festivos de un año."
   },
-  "servers": [{ "url": "http://localhost:3030" }],
   "tags": [
     { "name": "Festivos", "description": "CRUD de los datos de cálculo de los festivos" },
     { "name": "Fechas", "description": "Operaciones que calculan fechas festivas" }
